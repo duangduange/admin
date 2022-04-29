@@ -24,7 +24,7 @@
       <el-table-column prop="username" label="姓名"></el-table-column>
       <el-table-column prop="email" label="邮箱"></el-table-column>
       <el-table-column prop="mobile" label="手机"></el-table-column>
-      <el-table-column prop="role_name" label="职务"></el-table-column>
+      <el-table-column prop="role_name" label="角色"></el-table-column>
       <el-table-column prop="mg_state" label="状态">
         <template slot-scope="scope">
           <el-switch v-model="scope.row.mg_state" @change="toggleState(scope.row)"></el-switch>
@@ -37,7 +37,7 @@
             <el-button slot="reference" type="danger" icon="el-icon-delete" size="mini" style="margin-right: 10px;"></el-button>
           </el-popconfirm>
           <el-tooltip effect="dark" content="分配人员" placement="top" :enterable="false">
-            <el-button type="warning" icon="el-icon-setting" size="mini"></el-button>
+            <el-button type="warning" icon="el-icon-setting" size="mini" @click="showRole(scope.row)"></el-button>
           </el-tooltip>
         </template>
       </el-table-column>
@@ -91,6 +91,20 @@
         <el-button type="primary" @click="editUser">确 定</el-button>
       </div>
     </el-dialog>
+
+    <el-dialog title="分配角色" :visible.sync="roleVisible" @close="currentRoleId = ''">
+      <div>
+        <p>当前用户: {{ currentRole.username }}</p>
+        <p>当前角色: {{ currentRole.role_name }}</p>
+        <el-select v-model="currentRoleId" placeholder="选择角色">
+          <el-option v-for="item in roleList" :key="item.id" :label="item.roleName" :value="item.id"></el-option>
+        </el-select>
+      </div>
+      <div slot="footer" class="dialog-footer">
+        <el-button @click="roleVisible = false">取 消</el-button>
+        <el-button type="primary" @click="changeRight">确 定</el-button>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -118,7 +132,8 @@ export default {
         pagesize: 3, // 每页显示用户数量，艹
       },
       userList: [],
-      total: 0, // 我佛
+      total: 0, // 回顾 我佛
+
       addFormVisible: false,
       addForm: {
         username: '',
@@ -144,6 +159,7 @@ export default {
           { validator: mobileRule, trigger: 'blur' }
         ]
       },
+
       editFormVisible: false,
       editForm: {},
       editFormRules: {
@@ -153,7 +169,12 @@ export default {
         mobile: [
           { validator: mobileRule, trigger: 'blur' }
         ]
-      }
+      },
+
+      roleVisible: false,
+      currentRole: {},
+      roleList: [],
+      currentRoleId: ''
     };
   },
   created() {
@@ -161,14 +182,14 @@ export default {
   },
   methods: {
     async getUsers() {
-      const { data: data } = await this.$http.get("users", {
+      const { data: res } = await this.$http.get("users", {
         params: this.params,
       });
-      if(data.meta.status !== 200) {
-        return this.$message.error('拉取用户数据失败')
+      if(res.meta.status !== 200) {
+        return this.$message.error('网络异常')
       }
-      this.userList = data.data.users
-      this.total = data.data.total
+      this.userList = res.data.users
+      this.total = res.data.total
       console.log(this.userList)
     },
     handleSizeChange(val) {
@@ -180,19 +201,19 @@ export default {
       this.getUsers()
     },
     async toggleState(info) {
-      const { data : data } = await this.$http.put(`users/${info.id}/state/${info.mg_state}`)
-      if(data.meta.status !== 200) {
-        this.$message.error('更新状态出错了')
+      const { data: res } = await this.$http.put(`users/${info.id}/state/${info.mg_state}`)
+      if(res.meta.status !== 200) {
+        this.$message.error('网络异常')
         info.mg_state = !info.mg_state
       }
     },
     addUser() {
       this.$refs.addFormRef.validate(async valid => {
         if(!valid) return
-        const {data : data} = await this.$http.post('users', this.addForm)
-        console.log(data);
-        if(data.meta.status !== 201) {
-          return this.$message.error('添加用户失败')
+        const { data: res} = await this.$http.post('users', this.addForm)
+        console.log(res);
+        if(res.meta.status !== 201) {
+          return this.$message.error('网络异常')
         }
         this.$message.success('添加成功')
         this.getUsers()
@@ -200,23 +221,23 @@ export default {
       })
     },
     async showEdit(info) {
-      const {data: data} = await this.$http.get(`users/${info.id}`)
-      if(data.meta.status !== 200) {
-        return this.$message.error('更新数据出错了')
+      const { data: res } = await this.$http.get(`users/${info.id}`)
+      if(res.meta.status !== 200) {
+        return this.$message.error('网络异常')
       }
-      this.editForm = data.data
+      this.editForm = res.data
       this.editFormVisible = true
     },
     editUser() {
       this.$refs.editFormRef.validate(async valid => {
         if(!valid) return
-        const {data : data} = await this.$http.put(`users/${this.editForm.id}`, {
+        const { data: res } = await this.$http.put(`users/${this.editForm.id}`, {
           email: this.editForm.email,
           mobile: this.editForm.mobile
         })
-        console.log(data);
-        if(data.meta.status !== 200) {
-          return this.$message.error('修改失败')
+        console.log(res);
+        if(res.meta.status !== 200) {
+          return this.$message.error('网络异常')
         }
         this.$message.success('修改成功')
         this.getUsers()
@@ -227,11 +248,31 @@ export default {
       this.$refs.editFormRef.resetFields() // 全部重置，在标签中添加属性只重置校验提示
     },
     async deleteUser(info) {
-      const {data: data} = await this.$http.delete(`users/${info.id}`)
-      if(data.meta.status !== 200) {
-        return this.$message.error('删除失败')
+      const { data: res } = await this.$http.delete(`users/${info.id}`)
+      if(res.meta.status !== 200) {
+        return this.$message.error('网络异常')
       }
       this.getUsers()
+    },
+    async showRole(info) {
+      const { data: res } = await this.$http.get('roles')
+      if(res.meta.status !== 200) {
+        return this.$message.error('网络异常')
+      }
+      console.log(res.data);
+      this.currentRole = info
+      this.roleList = res.data
+      this.roleVisible = true
+    },
+    async changeRight() {
+      // 回顾 请求体写成对象
+      const { data: res } = await this.$http.put(`users/${this.currentRole.id}/role`, { rid: this.currentRoleId })
+      if(res.meta.status !== 200) {
+        return this.$message.error('网络异常')
+      }
+      this.$message.success('角色分配成功')
+      this.getUsers()
+      this.roleVisible = false
     }
   }
 };
